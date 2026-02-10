@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Deadlock-Free Resource Allocation Demo</title>
+    <style>
+        body { background: #eef6fa; font-family: Arial, sans-serif;}
+        .container { max-width: 950px; margin: 40px auto; background: #fff; padding: 24px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.10);}
+        h1 { text-align: center; color: #2b6cb0;}
+        label { font-weight:bold; color: #2b6cb0;}
+        input, button {width: 100%; padding: 9px; margin: 5px 0 9px 0; border-radius:4px; font-size:1em; border:1px solid #ccc;}
+        button {background: #2b6cb0; color: #fff; border: none; cursor: pointer;}
+        button:disabled {background: #888;}
+        .output {background: #f3f9fd; margin: 10px 0 20px 0; padding: 15px; border-radius: 5px;}
+        table {border-collapse: collapse; margin: 10px 0; width:100%;}
+        th, td {border: 1px solid #a6d0fd; padding: 8px 10px; text-align: center;}
+        th {background: #d7ecfa;}
+        .safe {color: green; font-weight:bold;}
+        .execute {color: #004729; font-weight: bold;}
+        .anim-box {display: flex; justify-content: space-around; margin-top: 20px;}
+        .proc, .res {padding: 20px; border-radius: 10px; text-align: center; transition: 0.8s ease;}
+        .proc {background: #f0f7ff; border: 2px solid #2b6cb0; width: 120px;}
+        .res {background: #fff8dc; border: 2px solid #da9800; width: 120px;}
+        .using {background: #bdf7c0 !important;}
+        .released {background: #d1f0ff !important;}
+        #warning {color: red; font-weight: bold; margin-top: 5px;}
+        .input-error {border: 2px solid red;}
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Deadlock-Free Resource Allocation</h1>
+
+    <label>Available resources (comma separated):</label>
+    <input type="text" id="resources" placeholder="e.g. 3,4">
+    <div id="warning"></div>
+
+    <div id="processorArea">
+        <label>Add Processor Resource Needs:</label>
+        <input type="text" id="procResources" placeholder="e.g. 3,2">
+        <button onclick="addProcessor()">Add Processor</button>
+    </div>
+
+    <div id="allProcs"></div>
+    <button onclick="runSimulation()" id="runBtn" disabled>Run Safe Allocation</button>
+    <button onclick="resetSimulation()" id="resetBtn" style="display:none;">Reset</button>
+
+    <div class="anim-box" id="visual"></div>
+
+    <div class="output" id="log"></div>
+    <div id="tableArea"></div>
+</div>
+
+<script>
+    let available = []; 
+    let processors = []; 
+
+    function addProcessor() {
+        const warning = document.getElementById("warning");
+        const resourceInput = document.getElementById("resources");
+        const procInput = document.getElementById("procResources");
+        warning.innerHTML = "";
+        resourceInput.classList.remove("input-error");
+        procInput.classList.remove("input-error");
+
+        let availableInput = resourceInput.value.trim();
+        if (!availableInput) {
+            warning.innerHTML = "⚠️ Please enter available resources first.";
+            resourceInput.classList.add("input-error");
+            return;
+        }
+
+        available = availableInput.split(',').map(Number);
+        let input = procInput.value.trim();
+        if (!input) return;
+
+        let proc = input.split(',').map(Number);
+
+        // Check mismatch in resource type count
+        if (proc.length !== available.length) {
+            warning.innerHTML = "⚠️ Number of resource types must match available resources.";
+            procInput.classList.add("input-error");
+            return;
+        }
+
+        // Check if processor needs exceed available resources
+        for (let i = 0; i < proc.length; i++) {
+            if (proc[i] > available[i]) {
+                warning.innerHTML = `⚠️ Processor needs exceed available resources at Resource ${i + 1}.`;
+                procInput.classList.add("input-error");
+                return;
+            }
+        }
+
+        // If valid, add processor
+        processors.push(proc);
+        procInput.value = "";
+        updateProcessorList();
+
+        if (processors.length >= 1) document.getElementById("runBtn").disabled = false;
+    }
+
+    function updateProcessorList() {
+        let txt = "<b>Added Processors (Needs):</b><ul>";
+        processors.forEach((p,i)=>{txt+=`<li>P${i+1}: ${p.join(', ')}</li>`;});
+        txt+="</ul>";
+        document.getElementById("allProcs").innerHTML = txt;
+    }
+
+    function runSimulation() {
+        available = document.getElementById('resources').value.split(',').map(Number);
+        let log = document.getElementById('log');
+        log.innerHTML = `<b>Initial Resources:</b> ${available.join(', ')}<br><hr>`;
+
+        visualizeState("initial");
+
+        // Sequentially execute all processors safely
+        let i = 0;
+        function executeNext() {
+            if (i >= processors.length) {
+                buildTable(new Array(processors.length).fill("Executed"));
+                return;
+            }
+
+            let p = processors[i];
+            log.innerHTML += `<b>P${i+1}:</b> <span class='execute'>Accessing resources...</span><br>`;
+            visualizeState(`p${i+1}-using`);
+            available = available.map((v,k)=>v - p[k]);
+            log.innerHTML += `P${i+1} used resources. Remaining available: ${available.join(', ')}<br>`;
+
+            setTimeout(()=>{
+                available = available.map((v,k)=>v + p[k]);
+                log.innerHTML += `<span class='safe'>P${i+1} released resources.</span> Now available: ${available.join(', ')}<br>`;
+                visualizeState(`p${i+1}-released`);
+                i++;
+                setTimeout(executeNext, 1500);
+            }, 1500);
+        }
+
+        executeNext();
+    }
+
+    function visualizeState(state) {
+        const area = document.getElementById("visual");
+        let html = "";
+        processors.forEach((_, index)=>{
+            html += `<div class="proc" id="p${index+1}">Processor ${index+1}</div>`;
+        });
+        html += `<div class="res" id="res">Resources</div>`;
+        area.innerHTML = html;
+
+        processors.forEach((_, index)=>{
+            const procBox = document.getElementById(`p${index+1}`);
+            if(state === `p${index+1}-using`) procBox.classList.add("using");
+            if(state === `p${index+1}-released`) procBox.classList.add("released");
+        });
+    }
+
+    function buildTable(statusArr) {
+        let table = "<table><tr><th>Processor</th>";
+        for(let i=0; i<available.length; i++) table += `<th>Res${i+1}</th>`;
+        table += "<th>Status</th></tr>";
+        processors.forEach((proc,i)=>{
+            let st = "<span class='safe'>Executed</span>";
+            table += `<tr><td>P${i+1}</td>${proc.map(n=>`<td>${n}</td>`).join('')}<td>${st}</td></tr>`;
+        });
+        table += "</table>";
+        document.getElementById('tableArea').innerHTML = table;
+        document.getElementById('runBtn').disabled = true;
+        document.getElementById('resetBtn').style.display = 'inline-block';
+    }
+
+    function resetSimulation() {
+        available = [];
+        processors = [];
+        document.getElementById("allProcs").innerHTML = "";
+        document.getElementById('log').innerHTML = "";
+        document.getElementById('tableArea').innerHTML = "";
+        document.getElementById('visual').innerHTML = "";
+        document.getElementById('warning').innerHTML = "";
+        document.getElementById('runBtn').disabled = true;
+        document.getElementById('resetBtn').style.display = 'none';
+        document.getElementById("resources").classList.remove("input-error");
+        document.getElementById("procResources").classList.remove("input-error");
+    }
+</script>
+</body>
+</html>
